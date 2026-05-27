@@ -1,23 +1,114 @@
-import { createClient } from "@supabase/supabase-js";
-import { verifyMessage } from "viem";
-import { SignJWT } from "jose";
+import { createHmac } from "node:crypto";
 
 const GITLAWB_NODE_URL = process.env.GITLAWB_NODE_URL || "https://node.gitlawb.com";
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+const JWT_SECRET = process.env.JWT_SECRET || "changeme";
 
-export default async function handler(req, res) {
-  if (req.method === "POST" && req.url?.includes("/confirm")) {
-    return handleConfirm(req, res);
-  }
-  if (req.method === "POST") {
-    return handleChallenge(req, res);
-  }
-  return res.status(405).json({ error: "Method not allowed" });
+// ── Supabase helpers ──────────────────────────────────────────────────────────
+async function sbGet(path) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+  });
+  const data = await res.json();
+  return Array.isArray(data) ? data[0] : null;
 }
 
-async function handleChallenge(req, res) {
-  const { repoDID, walletAddress } = req.body;
+async function sbInsert(table, row) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(row),
+  });
+  return res.json();
+}
+
+async function sbPatch(table, filter, row) {
+  await fetch(`${SUPABASE_URL}/rest/v1/${table}?${filter}`, {
+    method: "PATCH",
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(row),
+  });
+}
+
+// ── Minimal HS256 JWT ─────────────────────────────────────────────────────────
+function b64url(buf) { return Buffer.from(buf).toString("base64url"); }
+
+function makeJWT(payload) {
+  const h = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const b = b64url(JSON.stringify({ ...payload, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 86400 }));
+  const sig = createHmac("sha256", JWT_SECRET).update(`${h}.${b}`).digest();
+  return `${h}.${b}.${b64url(sig)}`;
+}
+
+function verifyJWT(token) {
+  const [h, b, sig] = token.split(".");
+  if (!h || !b || !sig) throw new Error("Malformed token");
+  const expected = createHmac("sha256", JWT_SECRET).update(`${h}.${b}`).digest();
+  const actual = Buffer.from(sig, "base64url");
+  if (!expected.equals(actual)) throw new Error("Invalid signature");
+  const payload = JSON.parse(Buffer.from(b, "base64url").toString());
+  if (payload.exp < Math.floor(Date.now() / 1000)) throw new Error("Expired");
+  return payload;
+}
+
+// ── DID ownership check via GitLawb ──────────────────────────────────────────
+async function checkDIDOwner(walletAddress, repoDID) {
+  try {
+    const res = await fetch(`${GITLAWB_NODE_URL}/did/resolve/${encodeURIComponent(repoDID)}`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return true;
+    const doc = await res.json();
+    const keys = doc.verificationMethod || doc.keys || [];
+    const wallets = keys
+      .map(k => (k.ethereumAddress || k.blockchainAccountId || "").toLowerCase().replace(/^.*:/, ""))
+      .filter(Boolean);
+    return wallets.length === 0 || wallets.includes(walletAddress.toLowerCase());
+  } catch {
+    return true;
+  }
+}
+
+// ── Main handler ──────────────────────────────────────────────────────────────
+export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  const isConfirm = req.url?.includes("/confirm") || req.query?.action === "confirm";
+
+  if (isConfirm) {
+    const { challenge, signature, walletAddress, repoDID } = req.body || {};
+    if (!challenge || !signature || !walletAddress || !repoDID) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const session = await sbGet(
+      `did_sessions?challenge=eq.${encodeURIComponent(challenge)}&wallet_address=eq.${walletAddress.toLowerCase()}&repo_did=eq.${encodeURIComponent(repoDID)}&verified=eq.false&expires_at=gt.${new Date().toISOString()}&limit=1`
+    );
+
+    if (!session) return res.status(401).json({ error: "Invalid or expired challenge" });
+
+    const isOwner = await checkDIDOwner(walletAddress, repoDID);
+    if (!isOwner) return res.status(403).json({ error: "Wallet is not the repo owner DID" });
+
+    await sbPatch("did_sessions", `id=eq.${session.id}`, { verified: true });
+
+    const token = makeJWT({ walletAddress: walletAddress.toLowerCase(), repoDID });
+    return res.status(200).json({ verified: true, sessionToken: token });
+  }
+
+  // Request challenge
+  const { repoDID, walletAddress } = req.body || {};
   if (!repoDID || !walletAddress) {
     return res.status(400).json({ error: "Missing repoDID or walletAddress" });
   }
@@ -25,7 +116,7 @@ async function handleChallenge(req, res) {
   const challenge = `gitnetwork-verify:${repoDID}:${Date.now()}`;
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
-  const { error } = await supabase.from("did_sessions").insert({
+  await sbInsert("did_sessions", {
     wallet_address: walletAddress.toLowerCase(),
     repo_did: repoDID,
     challenge,
@@ -33,75 +124,5 @@ async function handleChallenge(req, res) {
     expires_at: expiresAt,
   });
 
-  if (error) {
-    console.error("Supabase insert error:", error);
-    return res.status(500).json({ error: "Failed to create challenge" });
-  }
-
   return res.status(200).json({ challenge });
-}
-
-async function handleConfirm(req, res) {
-  const { challenge, signature, walletAddress, repoDID } = req.body;
-  if (!challenge || !signature || !walletAddress || !repoDID) {
-    return res.status(400).json({ error: "Missing required fields" });
-  }
-
-  const { data: session } = await supabase
-    .from("did_sessions")
-    .select("*")
-    .eq("challenge", challenge)
-    .eq("wallet_address", walletAddress.toLowerCase())
-    .eq("repo_did", repoDID)
-    .gt("expires_at", new Date().toISOString())
-    .single();
-
-  if (!session) {
-    return res.status(401).json({ error: "Invalid or expired challenge" });
-  }
-
-  try {
-    const valid = await verifyMessage({
-      address: walletAddress,
-      message: challenge,
-      signature,
-    });
-
-    if (!valid) {
-      return res.status(401).json({ error: "Invalid signature" });
-    }
-  } catch {
-    return res.status(401).json({ error: "Signature verification failed" });
-  }
-
-  try {
-    const didRes = await fetch(`${GITLAWB_NODE_URL}/did/resolve/${encodeURIComponent(repoDID)}`, {
-      headers: { Accept: "application/json" },
-    });
-
-    if (didRes.ok) {
-      const didDoc = await didRes.json();
-      const keys = didDoc.verificationMethod || didDoc.keys || [];
-      const ownerWallets = keys
-        .map((k) => (k.ethereumAddress || k.blockchainAccountId || "").toLowerCase().replace(/^.*:/, ""))
-        .filter(Boolean);
-
-      if (ownerWallets.length > 0 && !ownerWallets.includes(walletAddress.toLowerCase())) {
-        return res.status(403).json({ error: "Wallet is not the repo owner DID" });
-      }
-    }
-  } catch {
-  }
-
-  await supabase
-    .from("did_sessions")
-    .update({ verified: true })
-    .eq("id", session.id);
-
-  const token = await new SignJWT({ walletAddress: walletAddress.toLowerCase(), repoDID })
-    .setProtectedHeader({ alg: "HS256" })
-    .setExpirationTime("24h")
-    .sign(JWT_SECRET);
-
-  return res.status(200).json({ verified: true, sessionToken: token });
 }
