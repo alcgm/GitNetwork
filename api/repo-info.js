@@ -1,7 +1,13 @@
-import { createClient } from "@supabase/supabase-js";
-
 const GITLAWB_NODE_URL = process.env.GITLAWB_NODE_URL || "https://node.gitlawb.com";
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+
+async function sbFetch(path) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+  });
+  return res.json();
+}
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
@@ -12,6 +18,7 @@ export default async function handler(req, res) {
   try {
     const gitlawbRes = await fetch(`${GITLAWB_NODE_URL}/repos/${encodeURIComponent(did)}`, {
       headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
     });
 
     if (!gitlawbRes.ok) {
@@ -20,11 +27,10 @@ export default async function handler(req, res) {
 
     const repoData = await gitlawbRes.json();
 
-    const { data: launch } = await supabase
-      .from("launches")
-      .select("token_address, token_name, token_symbol, created_at")
-      .eq("repo_did", did)
-      .single();
+    const launches = await sbFetch(
+      `launches?repo_did=eq.${encodeURIComponent(did)}&select=token_address,token_name,token_symbol,created_at&limit=1`
+    );
+    const launch = Array.isArray(launches) ? launches[0] : null;
 
     return res.status(200).json({
       repoDID: did,
@@ -37,7 +43,7 @@ export default async function handler(req, res) {
       tokenInfo: launch || null,
     });
   } catch (err) {
-    console.error("repo-info error:", err);
+    console.error("repo-info error:", err.message);
     return res.status(500).json({ error: "Failed to fetch repo info" });
   }
 }
