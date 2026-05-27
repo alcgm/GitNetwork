@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "public/**", "use": "@vercel/static" },
+    { "src": "api/*.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/api/verify-did/confirm", "dest": "/api/verify-did.js" },
+    { "src": "/api/repo-info", "dest": "/api/repo-info.js" },
+    { "src": "/api/verify-did", "dest": "/api/verify-did.js" },
+    { "src": "/api/launch-token", "dest": "/api/launch-token.js" },
+    { "src": "/api/vesting-status", "dest": "/api/vesting-status.js" },
+    { "src": "/api/webhook-gitlawb", "dest": "/api/webhook-gitlawb.js" },
+    { "src": "/(.*)", "dest": "/public/$1" }
+  ],
+  "env": {
+    "GITLAWB_NODE_URL": "https://node.gitlawb.com"
+  }
+}
