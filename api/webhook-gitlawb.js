@@ -1,7 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
 const WEBHOOK_SECRET = process.env.GITLAWB_WEBHOOK_SECRET;
 
 export default async function handler(req, res) {
@@ -22,29 +22,32 @@ export default async function handler(req, res) {
     }
   }
 
-  const { event, data } = req.body;
-
-  if (event !== "pr.merged") {
-    return res.status(200).json({ skipped: true });
-  }
+  const { event, data } = req.body || {};
+  if (event !== "pr.merged") return res.status(200).json({ skipped: true, event });
 
   const { repoDID, prId, contributorDID, contributorWallet, mergedAt } = data || {};
+  if (!repoDID || !prId) return res.status(400).json({ error: "Missing required event data" });
 
-  if (!repoDID || !prId) {
-    return res.status(400).json({ error: "Missing required event data" });
-  }
-
-  const { error } = await supabase.from("pr_events").insert({
-    repo_did: repoDID,
-    pr_id: String(prId),
-    contributor_did: contributorDID,
-    contributor_wallet: contributorWallet?.toLowerCase(),
-    merged_at: mergedAt || new Date().toISOString(),
-    processed: false,
+  const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/pr_events`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({
+      repo_did: repoDID,
+      pr_id: String(prId),
+      contributor_did: contributorDID,
+      contributor_wallet: contributorWallet?.toLowerCase(),
+      merged_at: mergedAt || new Date().toISOString(),
+      processed: false,
+    }),
   });
 
-  if (error) {
-    console.error("Webhook insert error:", error);
+  if (!insertRes.ok) {
+    console.error("Webhook insert error:", await insertRes.text());
     return res.status(500).json({ error: "Failed to record PR event" });
   }
 
