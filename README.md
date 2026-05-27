@@ -44,7 +44,7 @@ Every GitLawb repo can launch its own ERC-20 token, distribute tokens to contrib
 
 | Contract | Base Mainnet | Base Sepolia |
 |---|---|---|
-| RepoFactory | `[DEPLOY AND FILL]` | `[DEPLOY AND FILL]` |
+| RepoFactory | `0x7DB0f874Ab95fd32e8755662B86f032429EFa4D6` | `[DEPLOY AND FILL]` |
 | Aerodrome Router | `0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43` | — |
 | WETH (Base) | `0x4200000000000000000000000000000000000006` | — |
 
