@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GitNetwork — Tokenize Your GitLawb Repo</title>
+  <meta name="description" content="Permissionless token launchpad for GitLawb repositories on Base. Launch ERC-20 tokens, distribute to contributors, seed Aerodrome liquidity." />
+  <link rel="stylesheet" href="/css/style.css" />
+  <script>
+    window.GITNETWORK_FACTORY_ADDRESS = "";
+    window.GITNETWORK_CHAIN_ID = 8453;
+  </script>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="/" class="nav-logo">git<span class="dot">●</span>network</a>
+  <div class="nav-links">
+    <a href="/dashboard.html">Dashboard</a>
+    <a href="/claim.html">Claim</a>
+    <a href="/governance.html">Governance</a>
+    <button class="wallet-btn" id="nav-wallet-btn"><span class="wallet-dot"></span>Connect Wallet</button>
+  </div>
+</nav>
+
+<!-- Hero -->
+<div class="container">
+  <section class="hero">
+    <div class="hero-badge">⬡ Built on Base · Powered by GitLawb</div>
+    <h1>Turn your <span>GitLawb repo</span><br/>into a tokenized economy</h1>
+    <p class="hero-sub">Launch an ERC-20 token for any GitLawb repo. Reward contributors with vesting, seed liquidity on Aerodrome, and govern via token vote — all permissionless.</p>
+    <div class="hero-actions">
+      <a href="#launch-form" class="btn btn-primary btn-lg">Launch a Token →</a>
+      <a href="/dashboard.html" class="btn btn-secondary btn-lg">Explore Launches</a>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-title">Connect &amp; Verify</div>
+      <div class="step-desc">Connect your wallet and prove you own the GitLawb repo by signing a challenge.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-title">Configure Tokenomics</div>
+      <div class="step-desc">Set token supply, contributor allocations with vesting schedules, and public sale percentage.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-title">Launch on Base</div>
+      <div class="step-desc">Deploy ERC-20 token and vesting contracts to Base mainnet with one transaction.</div>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-title">Seed Liquidity</div>
+      <div class="step-desc">Automatically seed token/ETH liquidity pool on Aerodrome DEX for price discovery.</div>
+    </div>
+  </div>
+
+  <hr class="divider" />
+
+  <!-- Launch Form -->
+  <div class="launch-section section" id="launch-form">
+    <h2 style="font-size:24px;font-weight:700;margin-bottom:8px;">Launch Your Repo Token</h2>
+    <p style="color:var(--text-muted);margin-bottom:32px;">Complete the steps below to deploy your token on Base.</p>
+
+    <!-- Progress -->
+    <div class="progress-steps" id="progress-steps">
+      <div class="progress-step active">
+        <div class="ps-dot">1</div>
+        <div class="ps-label">Wallet</div>
+      </div>
+      <div class="progress-step">
+        <div class="ps-dot">2</div>
+        <div class="ps-label">Repo</div>
+      </div>
+      <div class="progress-step">
+        <div class="ps-dot">3</div>
+        <div class="ps-label">Verify</div>
+      </div>
+      <div class="progress-step">
+        <div class="ps-dot">4</div>
+        <div class="ps-label">Tokenomics</div>
+      </div>
+      <div class="progress-step">
+        <div class="ps-dot">5</div>
+        <div class="ps-label">Launch</div>
+      </div>
+    </div>
+
+    <!-- Step 1: Wallet -->
+    <div class="card fade-in" id="step-wallet">
+      <div class="card-header">
+        <span class="card-title">Step 1 — Connect Wallet</span>
+        <span class="badge badge-blue">Base Mainnet Required</span>
+      </div>
+      <p style="color:var(--text-muted);margin-bottom:20px;">Connect a wallet that controls the GitLawb repo you want to tokenize. You'll need a small amount of ETH on Base for the 0.005 ETH launch fee + gas.</p>
+      <button class="btn btn-primary" id="wallet-btn"><span class="wallet-dot"></span>Connect Wallet</button>
+      <div id="connected-info" style="display:none;margin-top:16px;align-items:center;gap:12px;">
+        <span class="badge badge-green">● Connected</span>
+        <code class="addr" id="wallet-address"></code>
+      </div>
+      <div style="margin-top:20px;">
+        <button class="btn btn-secondary" id="btn-next-1" disabled>Continue →</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Repo -->
+    <div class="card fade-in" id="step-repo" style="display:none">
+      <div class="card-header">
+        <span class="card-title">Step 2 — Enter GitLawb Repo</span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">GitLawb Repo URL or DID</label>
+        <div style="display:flex;gap:10px;">
+          <input class="form-input" id="repo-input" placeholder="https://gitlawb.com/your-repo  or  did:gitlawb:your-repo" />
+          <button class="btn btn-primary" id="btn-fetch-repo" style="white-space:nowrap">Fetch Repo</button>
+        </div>
+        <div class="form-hint">Enter your repo's GitLawb URL or DID identifier</div>
+      </div>
+      <div id="repo-card" class="card" style="display:none;background:var(--surface-2);margin-top:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
+          <div>
+            <div style="font-weight:700;font-size:16px;margin-bottom:4px;" id="repo-name"></div>
+            <code class="addr" id="repo-did-display" style="font-size:12px;"></code>
+            <p style="color:var(--text-muted);font-size:13px;margin-top:8px;" id="repo-desc"></p>
+          </div>
+          <span class="badge badge-green">✓ Found</span>
+        </div>
+      </div>
+      <div style="margin-top:20px;">
+        <button class="btn btn-secondary" id="btn-next-2" disabled>Continue →</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Verify -->
+    <div class="card fade-in" id="step-verify" style="display:none">
+      <div class="card-header">
+        <span class="card-title">Step 3 — Verify Repo Ownership</span>
+      </div>
+      <p style="color:var(--text-muted);margin-bottom:20px;">We'll generate a challenge string for you to sign with your wallet. This proves your wallet controls the repo's DID without revealing your private key.</p>
+      <button class="btn btn-primary" id="btn-verify">Verify Ownership</button>
+      <div id="challenge-box" style="display:none;margin-top:16px;">
+        <div class="form-label">Challenge string (sign this)</div>
+        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;font-family:var(--mono);font-size:12px;word-break:break-all;color:var(--text-dim);" id="challenge-display"></div>
+        <button class="btn btn-primary" id="btn-sign" style="margin-top:12px;" disabled>Sign with Wallet</button>
+      </div>
+      <div style="margin-top:20px;">
+        <button class="btn btn-secondary" id="btn-next-3" disabled>Continue →</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Tokenomics -->
+    <div class="card fade-in" id="step-tokenomics" style="display:none">
+      <div class="card-header">
+        <span class="card-title">Step 4 — Configure Tokenomics</span>
+      </div>
+
+      <div class="grid-2" style="gap:16px;">
+        <div class="form-group">
+          <label class="form-label">Token Name</label>
+          <input class="form-input" id="token-name" placeholder="My Repo Token" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Token Symbol</label>
+          <input class="form-input" id="token-symbol" placeholder="REPO" maxlength="8" style="text-transform:uppercase" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Total Supply</label>
+        <input class="form-input" id="token-supply" type="number" placeholder="1000000" value="1000000" />
+        <div class="form-hint">Total number of tokens to mint (decimals = 18)</div>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Vesting Cliff (months)</label>
+          <input class="form-input" id="vesting-cliff" type="number" min="0" max="24" placeholder="3" value="3" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Vesting Duration (months)</label>
+          <input class="form-input" id="vesting-duration" type="number" min="1" max="60" placeholder="12" value="12" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Public Sale % (× 100 = BPS)</label>
+        <input class="form-input" id="public-sale-bps" type="number" min="0" max="8000" placeholder="2000 = 20%" value="2000" />
+        <div class="form-hint">Tokens sent to treasury for Aerodrome LP seeding</div>
+      </div>
+
+      <hr class="divider" />
+
+      <div class="card-header">
+        <span class="card-title">Contributors</span>
+        <button class="btn btn-secondary btn-sm" id="btn-add-contributor">+ Add Row</button>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Shares in BPS (basis points). 1000 BPS = 10%. Max total 90% (9000 BPS) including public sale.</div>
+      <div id="contributors-list"></div>
+
+      <div class="alloc-preview">
+        <div class="form-label">Allocation Preview</div>
+        <div class="alloc-bar" id="alloc-bar"></div>
+        <div class="alloc-legend" id="alloc-legend"></div>
+        <div style="display:none;color:var(--red);font-size:13px;margin-top:8px;" id="alloc-warning"></div>
+      </div>
+
+      <div style="margin-top:24px;">
+        <button class="btn btn-primary" id="btn-next-4">Review &amp; Launch →</button>
+      </div>
+    </div>
+
+    <!-- Step 5: Launch -->
+    <div class="card fade-in" id="step-launch" style="display:none">
+      <div class="card-header">
+        <span class="card-title">Step 5 — Review &amp; Launch</span>
+      </div>
+
+      <div class="card" style="background:var(--surface-2);margin-bottom:20px;">
+        <table class="table">
+          <tr><td style="color:var(--text-muted)">Token</td><td id="review-name" style="font-weight:600"></td></tr>
+          <tr><td style="color:var(--text-muted)">Total Supply</td><td id="review-supply" style="font-family:var(--mono)"></td></tr>
+          <tr><td style="color:var(--text-muted)">Contributors</td><td id="review-contributors"></td></tr>
+          <tr><td style="color:var(--text-muted)">Launch Fee</td><td id="review-fee" style="font-family:var(--mono)"></td></tr>
+          <tr><td style="color:var(--text-muted)">Network</td><td><span class="badge badge-blue">Base Mainnet</span></td></tr>
+        </table>
+      </div>
+
+      <div class="alert alert-warn">
+        <span>⚠ This action deploys contracts to Base mainnet and costs 0.005 ETH + gas. Review carefully before proceeding.</span>
+      </div>
+
+      <button class="btn btn-primary btn-lg" id="btn-launch" style="width:100%">Launch Token →</button>
+
+      <div id="success-box" style="display:none;" class="fade-in">
+        <div class="alert alert-success" style="margin-top:20px;">
+          <div>
+            <b>🚀 Token launched successfully!</b><br/>
+            Token address: <code class="addr" id="success-token-address"></code><br/>
+            Tx: <a id="success-tx" href="#" target="_blank" rel="noopener"></a>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">
+          <a href="/dashboard.html" class="btn btn-secondary">View Dashboard</a>
+          <a href="/governance.html" class="btn btn-secondary">Governance</a>
+          <a href="/claim.html" class="btn btn-secondary">Claim Portal</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="footer">
+  <div>gitnetwork.fun · Built on <a href="https://base.org" target="_blank">Base</a> · Contracts open source on <a href="https://github.com/alcgm/GitNetwork" target="_blank">GitHub</a></div>
+</footer>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
