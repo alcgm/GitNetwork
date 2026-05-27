@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GitNetwork — Governance</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<nav class="nav">
+  <a href="/" class="nav-logo">git<span class="dot">●</span>network</a>
+  <div class="nav-links">
+    <a href="/">Launch</a>
+    <a href="/dashboard.html">Dashboard</a>
+    <a href="/claim.html">Claim</a>
+    <a href="/governance.html" class="active">Governance</a>
+    <button class="wallet-btn" id="nav-wallet-btn"><span class="wallet-dot"></span>Connect Wallet</button>
+  </div>
+</nav>
+
+<div class="container">
+  <section class="section">
+    <h1 style="font-size:28px;font-weight:700;margin-bottom:8px;">Token Governance</h1>
+    <p style="color:var(--text-muted);margin-bottom:32px;">Vote on proposals for GitLawb repos you hold tokens in.</p>
+
+    <!-- Token input -->
+    <div class="card" style="margin-bottom:28px;">
+      <div class="card-header">
+        <span class="card-title">Select Token</span>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <input class="form-input" id="gov-token-input" placeholder="Governance contract address (0x…)" style="flex:1;min-width:260px;" />
+        <button class="btn btn-primary" id="btn-load-gov">Load</button>
+      </div>
+    </div>
+
+    <div id="gov-content" style="display:none" class="fade-in">
+      <!-- Token info bar -->
+      <div class="card" style="margin-bottom:20px;background:var(--surface-2);">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+          <div>
+            <span id="gov-token-name" style="font-weight:700;font-size:16px;">—</span>
+            <span style="color:var(--text-muted);font-size:13px;margin-left:12px;">Your balance: <b id="gov-balance" style="color:var(--text)">—</b></span>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary btn-sm" id="btn-show-create">+ New Proposal</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Create proposal form -->
+      <div class="card" id="create-proposal-form" style="display:none;margin-bottom:20px;">
+        <div class="card-title" style="margin-bottom:16px;">Create Proposal</div>
+        <div class="form-group">
+          <label class="form-label">Proposal Description</label>
+          <textarea class="form-input" id="prop-description" rows="3" placeholder="Describe what this proposal will do…" style="resize:vertical;"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Voting Period (days)</label>
+          <input class="form-input" id="prop-days" type="number" min="1" max="30" value="7" style="max-width:180px;" />
+        </div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-primary" id="btn-submit-proposal">Submit Proposal</button>
+          <button class="btn btn-secondary" id="btn-cancel-proposal">Cancel</button>
+        </div>
+        <div id="create-status" style="margin-top:12px;"></div>
+      </div>
+
+      <!-- Proposals list -->
+      <div id="proposals-list">
+        <div style="color:var(--text-muted);text-align:center;padding:40px 0;">
+          <div class="spinner" style="margin:0 auto 16px;width:28px;height:28px;"></div>
+          Loading proposals…
+        </div>
+      </div>
+    </div>
+
+    <div id="gov-empty" style="text-align:center;padding:60px;color:var(--text-muted);">
+      <div style="font-size:48px;margin-bottom:16px;">⚖️</div>
+      <div style="font-size:18px;font-weight:600;margin-bottom:8px;">No token loaded</div>
+      <div>Enter a governance contract address above to view proposals.</div>
+    </div>
+  </section>
+</div>
+
+<footer class="footer">
+  gitnetwork.fun · <a href="https://github.com/alcgm/GitNetwork" target="_blank">GitHub</a>
+</footer>
+
+<script type="module">
+  import { connectWallet, getWallet, renderWalletButton } from "/js/wallet.js";
+  import { castVote, createProposal, REPO_GOVERNANCE_ABI, ERC20_ABI } from "/js/contracts.js";
+
+  const walletBtn = document.getElementById("nav-wallet-btn");
+  let govAddress = null;
+  let proposals = [];
+
+  walletBtn?.addEventListener("click", async () => {
+    await connectWallet();
+    renderWalletButton(walletBtn);
+  });
+
+  document.getElementById("btn-load-gov")?.addEventListener("click", async () => {
+    const addr = document.getElementById("gov-token-input").value.trim();
+    if (!addr || !addr.startsWith("0x")) return;
+    govAddress = addr;
+
+    document.getElementById("gov-empty").style.display = "none";
+    document.getElementById("gov-content").style.display = "block";
+
+    await loadGovernance(addr);
+  });
+
+  async function loadGovernance(addr) {
+    const wallet = getWallet();
+
+    try {
+      const { publicClient } = window._viemClients || {};
+      if (!publicClient) {
+        renderMockProposals();
+        return;
+      }
+
+      const count = await publicClient.readContract({
+        address: addr,
+        abi: REPO_GOVERNANCE_ABI,
+        functionName: "proposalCount",
+      });
+
+      const tokenAddr = await publicClient.readContract({
+        address: addr,
+        abi: REPO_GOVERNANCE_ABI,
+        functionName: "governanceToken",
+      });
+
+      const [name, balance] = await Promise.all([
+        publicClient.readContract({ address: tokenAddr, abi: ERC20_ABI, functionName: "name" }),
+        wallet ? publicClient.readContract({ address: tokenAddr, abi: ERC20_ABI, functionName: "balanceOf", args: [wallet] }) : 0n,
+      ]);
+
+      document.getElementById("gov-token-name").textContent = name;
+      document.getElementById("gov-balance").textContent = (Number(balance) / 1e18).toLocaleString();
+
+      proposals = [];
+      for (let i = Number(count) - 1; i >= 0; i--) {
+        const p = await publicClient.readContract({
+          address: addr,
+          abi: REPO_GOVERNANCE_ABI,
+          functionName: "getProposal",
+          args: [BigInt(i)],
+        });
+        const voted = wallet ? await publicClient.readContract({
+          address: addr,
+          abi: REPO_GOVERNANCE_ABI,
+          functionName: "hasVoted",
+          args: [BigInt(i), wallet],
+        }) : false;
+        proposals.push({ id: i, description: p[0], votesFor: p[1], votesAgainst: p[2], endsAt: p[3], state: p[4], proposer: p[5], voted });
+      }
+
+      renderProposals();
+    } catch (err) {
+      document.getElementById("proposals-list").innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    }
+  }
+
+  function renderProposals() {
+    const el = document.getElementById("proposals-list");
+    if (!proposals.length) {
+      el.innerHTML = `<div class="card" style="text-align:center;padding:40px;color:var(--text-muted);">No proposals yet. Create the first one!</div>`;
+      return;
+    }
+
+    const stateMap = { 0: ["Active", "badge-blue"], 1: ["Passed", "badge-green"], 2: ["Failed", "badge-red"], 3: ["Executed", "badge-gray"] };
+    const now = BigInt(Math.floor(Date.now() / 1000));
+
+    el.innerHTML = proposals.map((p) => {
+      const totalVotes = p.votesFor + p.votesAgainst;
+      const forPct = totalVotes > 0n ? Number((p.votesFor * 100n) / totalVotes) : 0;
+      const againstPct = 100 - forPct;
+      const [stateLabel, badgeClass] = stateMap[p.state] || ["Unknown", "badge-gray"];
+      const isActive = p.state === 0 && p.endsAt > now;
+      const timeLeft = isActive ? formatTimeLeft(Number(p.endsAt)) : "";
+
+      return `
+        <div class="card" style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+            <div style="flex:1;">
+              <div style="font-weight:600;font-size:15px;margin-bottom:4px;">${escHtml(p.description)}</div>
+              <div style="font-size:12px;color:var(--text-muted);">Proposed by <code class="addr" style="font-size:11px">${p.proposer.slice(0,10)}…</code> ${timeLeft ? `· ${timeLeft} remaining` : ''}</div>
+            </div>
+            <span class="badge ${badgeClass}">${stateLabel}</span>
+          </div>
+
+          <div class="vote-bar">
+            <div class="vote-label">
+              <span style="color:var(--green)">For: ${(Number(p.votesFor) / 1e18).toFixed(0)}</span>
+              <span style="color:var(--red)">Against: ${(Number(p.votesAgainst) / 1e18).toFixed(0)}</span>
+            </div>
+            <div class="vote-track">
+              <div class="vote-for" style="width:${forPct}%"></div>
+            </div>
+          </div>
+
+          ${isActive && !p.voted ? `
+            <div style="display:flex;gap:10px;margin-top:14px;">
+              <button class="btn btn-success btn-sm" onclick="castVoteUI(${p.id}, true)">✓ Vote For</button>
+              <button class="btn btn-danger btn-sm" onclick="castVoteUI(${p.id}, false)">✗ Vote Against</button>
+            </div>
+          ` : isActive && p.voted ? `
+            <div style="margin-top:12px;font-size:13px;color:var(--text-muted);">✓ You already voted on this proposal</div>
+          ` : ''}
+
+          <div id="vote-status-${p.id}" style="margin-top:8px;"></div>
+        </div>`;
+    }).join("");
+  }
+
+  window.castVoteUI = async (proposalId, support) => {
+    const wallet = getWallet();
+    if (!wallet) { await connectWallet(); return; }
+    const statusEl = document.getElementById(`vote-status-${proposalId}`);
+    statusEl.innerHTML = `<div class="alert alert-info"><span class="spinner"></span>Submitting vote…</div>`;
+    try {
+      const tx = await castVote(govAddress, proposalId, support);
+      statusEl.innerHTML = `<div class="alert alert-success">✓ Vote cast! Tx: <a href="https://basescan.org/tx/${tx}" target="_blank">${tx.slice(0,20)}…</a></div>`;
+      setTimeout(() => loadGovernance(govAddress), 3000);
+    } catch (err) {
+      statusEl.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    }
+  };
+
+  document.getElementById("btn-show-create")?.addEventListener("click", () => {
+    document.getElementById("create-proposal-form").style.display = "block";
+  });
+
+  document.getElementById("btn-cancel-proposal")?.addEventListener("click", () => {
+    document.getElementById("create-proposal-form").style.display = "none";
+  });
+
+  document.getElementById("btn-submit-proposal")?.addEventListener("click", async () => {
+    const wallet = getWallet();
+    if (!wallet) { await connectWallet(); return; }
+    const desc = document.getElementById("prop-description").value.trim();
+    const days = parseInt(document.getElementById("prop-days").value) || 7;
+    if (!desc) return;
+
+    const statusEl = document.getElementById("create-status");
+    statusEl.innerHTML = `<div class="alert alert-info"><span class="spinner"></span>Submitting…</div>`;
+
+    try {
+      const tx = await createProposal(govAddress, desc, days);
+      statusEl.innerHTML = `<div class="alert alert-success">✓ Proposal created! Tx: <a href="https://basescan.org/tx/${tx}" target="_blank">${tx.slice(0,20)}…</a></div>`;
+      document.getElementById("create-proposal-form").style.display = "none";
+      setTimeout(() => loadGovernance(govAddress), 3000);
+    } catch (err) {
+      statusEl.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+    }
+  });
+
+  function formatTimeLeft(endsAt) {
+    const diff = endsAt - Math.floor(Date.now() / 1000);
+    if (diff <= 0) return "Ended";
+    const d = Math.floor(diff / 86400);
+    const h = Math.floor((diff % 86400) / 3600);
+    if (d > 0) return `${d}d ${h}h`;
+    return `${h}h`;
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
+  function renderMockProposals() {
+    document.getElementById("gov-token-name").textContent = "Token (viem not loaded)";
+    document.getElementById("gov-balance").textContent = "—";
+    document.getElementById("proposals-list").innerHTML = `<div class="alert alert-warn">Connect viem clients to load on-chain data.</div>`;
+  }
+</script>
+</body>
+</html>
