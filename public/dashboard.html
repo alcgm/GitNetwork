@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GitNetwork — Dashboard</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<nav class="nav">
+  <a href="/" class="nav-logo">git<span class="dot">●</span>network</a>
+  <div class="nav-links">
+    <a href="/" >Launch</a>
+    <a href="/dashboard.html" class="active">Dashboard</a>
+    <a href="/claim.html">Claim</a>
+    <a href="/governance.html">Governance</a>
+    <button class="wallet-btn" id="nav-wallet-btn"><span class="wallet-dot"></span>Connect Wallet</button>
+  </div>
+</nav>
+
+<div class="container">
+  <section class="section">
+    <h1 style="font-size:28px;font-weight:700;margin-bottom:8px;">Repo Token Dashboard</h1>
+    <p style="color:var(--text-muted);margin-bottom:32px;">Look up any launched GitLawb repo token by address or DID.</p>
+
+    <div class="card" style="margin-bottom:32px;">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        <input class="form-input" id="lookup-input" placeholder="Token address (0x…) or GitLawb DID" style="flex:1;min-width:260px;" />
+        <button class="btn btn-primary" id="btn-lookup">Load Dashboard</button>
+      </div>
+    </div>
+
+    <div id="dashboard-content" style="display:none" class="fade-in">
+      <!-- Header -->
+      <div class="card" style="margin-bottom:20px;">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+          <div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--accent),#7C3AED);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;" id="token-icon">?</div>
+          <div style="flex:1;">
+            <div style="font-size:22px;font-weight:700;" id="dash-token-name">—</div>
+            <div style="color:var(--text-muted);font-size:14px;display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
+              <code class="addr" id="dash-token-addr"></code>
+              <a id="dash-basescan" href="#" target="_blank" rel="noopener" style="color:var(--accent);font-size:13px;">View on Basescan ↗</a>
+            </div>
+          </div>
+          <div>
+            <span class="badge badge-green" id="dash-chain-badge">Base Mainnet</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="grid-3" style="margin-bottom:20px;">
+        <div class="stat-card">
+          <div class="stat-label">Total Supply</div>
+          <div class="stat-value" id="dash-supply" style="font-size:20px;">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Repo</div>
+          <div class="stat-value" style="font-size:15px;font-family:var(--sans);" id="dash-repo-name">—</div>
+          <div class="stat-sub"><a href="#" id="dash-repo-link" target="_blank">View on GitLawb ↗</a></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Deployed</div>
+          <div class="stat-value" style="font-size:15px;font-family:var(--sans);" id="dash-deployed-at">—</div>
+          <div class="stat-sub" id="dash-deployer"></div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:20px;">
+        <!-- Contributors -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Contributors &amp; Vesting</span>
+          </div>
+          <div id="dash-vestings">
+            <div style="color:var(--text-muted);font-size:14px;">Loading…</div>
+          </div>
+        </div>
+
+        <!-- Governance -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Recent Proposals</span>
+            <a href="/governance.html" class="btn btn-secondary btn-sm">View All</a>
+          </div>
+          <div id="dash-proposals">
+            <div style="color:var(--text-muted);font-size:14px;">Loading…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Treasury -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Treasury &amp; Liquidity</span>
+          <span id="dash-lp-badge" class="badge badge-gray">LP Not Seeded</span>
+        </div>
+        <div class="grid-3">
+          <div>
+            <div class="stat-label">Treasury Tokens</div>
+            <div style="font-family:var(--mono);font-size:16px;" id="dash-treasury-tokens">—</div>
+          </div>
+          <div>
+            <div class="stat-label">Aerodrome Pool</div>
+            <div style="font-size:14px;" id="dash-aero-pool">—</div>
+          </div>
+          <div>
+            <div class="stat-label">Factory</div>
+            <code class="addr" style="font-size:12px;" id="dash-factory-addr">—</code>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div id="dashboard-empty" style="text-align:center;padding:60px 0;color:var(--text-muted);">
+      <div style="font-size:48px;margin-bottom:16px;">⬡</div>
+      <div style="font-size:18px;font-weight:600;margin-bottom:8px;">No repo loaded</div>
+      <div>Enter a token address or GitLawb DID above to view the dashboard.</div>
+    </div>
+  </section>
+</div>
+
+<footer class="footer">
+  gitnetwork.fun · <a href="https://github.com/alcgm/GitNetwork" target="_blank">GitHub</a>
+</footer>
+
+<script type="module">
+  import { connectWallet, getWallet, renderWalletButton } from "/js/wallet.js";
+  import { parseRepoDID } from "/js/gitlawb.js";
+
+  const walletBtn = document.getElementById("nav-wallet-btn");
+  walletBtn?.addEventListener("click", async () => {
+    await connectWallet();
+    renderWalletButton(walletBtn);
+  });
+
+  const SUPABASE_URL = window.SUPABASE_URL;
+  const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY;
+
+  async function supabaseFetch(path) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+    return res.json();
+  }
+
+  document.getElementById("btn-lookup")?.addEventListener("click", async () => {
+    const input = document.getElementById("lookup-input").value.trim();
+    if (!input) return;
+
+    document.getElementById("dashboard-content").style.display = "none";
+    document.getElementById("dashboard-empty").style.display = "none";
+
+    try {
+      let launch;
+      if (input.startsWith("0x")) {
+        const data = await supabaseFetch(`launches?token_address=eq.${input.toLowerCase()}&limit=1`);
+        launch = data[0];
+      } else {
+        const did = parseRepoDID(input);
+        const data = await supabaseFetch(`launches?repo_did=eq.${encodeURIComponent(did)}&limit=1`);
+        launch = data[0];
+      }
+
+      if (!launch) {
+        document.getElementById("dashboard-empty").style.display = "block";
+        document.getElementById("dashboard-empty").querySelector("div:nth-child(2)").textContent = "No launch found for this address or DID.";
+        return;
+      }
+
+      const vestings = await supabaseFetch(`vestings?launch_id=eq.${launch.id}`);
+      const proposals = await supabaseFetch(`proposals?token_address=eq.${launch.token_address}&order=created_at.desc&limit=5`);
+
+      populate(launch, vestings, proposals);
+      document.getElementById("dashboard-content").style.display = "block";
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+  });
+
+  function populate(launch, vestings, proposals) {
+    const sym = launch.token_symbol || "?";
+    document.getElementById("token-icon").textContent = sym.slice(0, 2);
+    document.getElementById("dash-token-name").textContent = `${launch.token_name} (${sym})`;
+    document.getElementById("dash-token-addr").textContent = launch.token_address;
+    document.getElementById("dash-basescan").href = `https://basescan.org/token/${launch.token_address}`;
+    document.getElementById("dash-supply").textContent = Number(launch.total_supply).toLocaleString();
+    document.getElementById("dash-repo-name").textContent = launch.repo_name || launch.repo_did;
+    document.getElementById("dash-repo-link").href = launch.repo_url || "#";
+    document.getElementById("dash-deployed-at").textContent = new Date(launch.created_at).toLocaleDateString();
+    document.getElementById("dash-deployer").innerHTML = `by <code class="addr" style="font-size:11px">${launch.deployer_wallet?.slice(0,10)}…</code>`;
+    document.getElementById("dash-factory-addr").textContent = launch.factory_address?.slice(0, 14) + "…";
+
+    const vestingEl = document.getElementById("dash-vestings");
+    if (!vestings.length) {
+      vestingEl.innerHTML = `<div style="color:var(--text-muted);font-size:14px">No contributors recorded</div>`;
+    } else {
+      vestingEl.innerHTML = vestings.map((v) => {
+        const pct = v.total_amount > 0 ? Math.min(100, (v.claimed_amount / v.total_amount) * 100) : 0;
+        return `
+          <div style="margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;">
+              <code class="addr" style="font-size:11px">${v.contributor_wallet.slice(0,10)}…</code>
+              <span style="color:var(--text-muted)">${Number(v.total_amount).toLocaleString()} tokens</span>
+            </div>
+            <div class="vesting-bar"><div class="vesting-fill" style="width:${pct}%"></div></div>
+            <div style="font-size:11px;color:var(--text-muted)">${pct.toFixed(1)}% claimed</div>
+          </div>`;
+      }).join("");
+    }
+
+    const propEl = document.getElementById("dash-proposals");
+    if (!proposals.length) {
+      propEl.innerHTML = `<div style="color:var(--text-muted);font-size:14px">No proposals yet</div>`;
+    } else {
+      propEl.innerHTML = proposals.map((p) => {
+        const badgeClass = p.status === "active" ? "badge-blue" : p.status === "passed" ? "badge-green" : "badge-gray";
+        return `
+          <div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-size:13px;flex:1;padding-right:12px;">${p.description?.slice(0, 60)}…</div>
+            <span class="badge ${badgeClass}" style="text-transform:capitalize">${p.status}</span>
+          </div>`;
+      }).join("");
+    }
+  }
+</script>
+</body>
+</html>
